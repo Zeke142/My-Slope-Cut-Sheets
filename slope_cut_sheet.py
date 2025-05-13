@@ -4,9 +4,9 @@ import numpy as np
 
 st.set_page_config(page_title="Slope Cut Sheet", layout="centered")
 
-# --- Title ---
 st.title("Slope Cut Sheet Generator")
-st.markdown("Enter basic data to generate a cut sheet with calculated elevations.")
+
+st.markdown("Enter station and elevation data to generate a clean slope report with optional specific stations.")
 
 # --- Input Section ---
 st.header("1. Input Parameters")
@@ -14,82 +14,72 @@ st.header("1. Input Parameters")
 col1, col2 = st.columns(2)
 
 with col1:
-    begin_station = st.number_input("Begin Station", value=0.0)
-    begin_elev = st.number_input("Begin Elevation", value=100.0)
+    begin_station = st.number_input("Begin Station", value=0.0, step=10.0)
+    begin_elev = st.number_input("Begin Elevation", value=100.0, step=0.1)
 
 with col2:
-    end_station = st.number_input("End Station", value=100.0)
-    end_elev = st.number_input("End Elevation", value=110.0)
+    end_station = st.number_input("End Station", value=100.0, step=10.0)
+    end_elev = st.number_input("End Elevation", value=110.0, step=0.1)
 
 increment = st.number_input("Station Increment", value=20.0, min_value=0.1)
 
-# --- Custom Stations Section ---
-st.header("2. Add Custom Stations")
+# --- Add Custom Stations One-by-One ---
+st.header("2. Optional: Add Odd/Custom Stations")
 
-if "custom_stations" not in st.session_state:
-    st.session_state.custom_stations = []
+if "odd_stations" not in st.session_state:
+    st.session_state.odd_stations = []
 
-new_station = st.number_input("Enter Custom Station", value=0.0, key="new_station")
+new_odd = st.number_input("Enter a custom station (e.g. 25, 45.5)", key="new_odd")
 
 col3, col4 = st.columns([1, 1])
 with col3:
     if st.button("Add Station"):
-        if new_station not in st.session_state.custom_stations:
-            st.session_state.custom_stations.append(new_station)
-            st.success(f"Station {new_station:.2f} added.")
+        if new_odd not in st.session_state.odd_stations:
+            st.session_state.odd_stations.append(new_odd)
+            st.success(f"Added station: {new_odd}")
         else:
-            st.warning("Station already added.")
+            st.warning("That station is already added.")
 
 with col4:
-    if st.button("Clear All Custom Stations"):
-        st.session_state.custom_stations.clear()
+    if st.button("Clear Odd Stations"):
+        st.session_state.odd_stations.clear()
+        st.info("Custom stations cleared.")
 
-if st.session_state.custom_stations:
-    st.markdown("**Current Custom Stations:**")
-    st.write(sorted(st.session_state.custom_stations))
-
-# --- Calculation ---
-if end_station != begin_station:
-    slope = (end_elev - begin_elev) / (end_station - begin_station)
-    slope_percent = slope * 100
-else:
+# --- Calculations ---
+if end_station == begin_station:
     st.error("Begin and end stations cannot be the same.")
-    slope = 0
-    slope_percent = 0
+    st.stop()
 
-st.markdown(f"### Slope: {slope_percent:.2f}%")
+slope = (end_elev - begin_elev) / (end_station - begin_station)
+slope_pct = slope * 100
 
-# Generate main incremental stations
+st.markdown(f"### Slope: {slope_pct:.2f}%")
+
+# --- Generate Station Lists ---
 station_range = np.arange(begin_station, end_station + increment, increment)
 elevations_main = begin_elev + slope * (station_range - begin_station)
 
 df_main = pd.DataFrame({
     "Station": station_range,
-    "Elevation (ft)": np.round(elevations_main, 3)
+    "Elevation": np.round(elevations_main, 3)
 })
 
-# Custom stations
-custom_stations = sorted(set(st.session_state.custom_stations))
-if custom_stations:
-    custom_elevs = begin_elev + slope * (np.array(custom_stations) - begin_station)
-    df_custom = pd.DataFrame({
-        "Station": custom_stations,
-        "Elevation (ft)": np.round(custom_elevs, 3)
+# Add odd/custom stations
+odd_stations = sorted(set(st.session_state.odd_stations))
+if odd_stations:
+    odd_elevs = begin_elev + slope * (np.array(odd_stations) - begin_station)
+    df_odd = pd.DataFrame({
+        "Station": odd_stations,
+        "Elevation": np.round(odd_elevs, 3)
     })
-else:
-    df_custom = None
-
-# Merge & Sort
-if df_custom is not None:
-    df_combined = pd.concat([df_main, df_custom])
+    df_combined = pd.concat([df_main, df_odd])
 else:
     df_combined = df_main
 
-df_combined = df_combined.drop_duplicates().sort_values("Station").reset_index(drop=True)
+# --- Final Output ---
+df_combined = df_combined.drop_duplicates().sort_values(by="Station").reset_index(drop=True)
 
-# --- Output Section ---
-st.header("3. Results")
-
+st.header("3. Slope Report")
 st.dataframe(df_combined, use_container_width=True)
 
 csv = df_combined.to_csv(index=False).encode("utf-8")
